@@ -7,16 +7,29 @@ use Illuminate\Support\Facades\Log;
 
 class GeminiEmbeddingService
 {
-    private string $apiKey;
+    private ?string $apiKey = null;
     private string $baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
     
     public function __construct()
     {
-        $this->apiKey = config('services.gemini.api_key');
-        
-        if (empty($this->apiKey)) {
-            throw new \Exception('Gemini API key not configured. Please set GEMINI_API_KEY in .env');
+        // Don't throw exception during construction (allows Laravel to boot)
+        // API key will be validated when methods are actually called
+    }
+    
+    /**
+     * Get API key (lazy loading with validation)
+     */
+    private function getApiKey(): string
+    {
+        if ($this->apiKey === null) {
+            $this->apiKey = config('services.gemini.api_key');
+            
+            if (empty($this->apiKey)) {
+                throw new \Exception('Gemini API key not configured. Please set GEMINI_API_KEY in .env');
+            }
         }
+        
+        return $this->apiKey;
     }
     
     /**
@@ -30,7 +43,7 @@ class GeminiEmbeddingService
         try {
             $response = Http::timeout(30)
             ->withQueryParameters([
-                'key' => $this->apiKey, 
+                'key' => $this->getApiKey(), 
             ])
             ->withHeaders([
                 'Content-Type' => 'application/json',
