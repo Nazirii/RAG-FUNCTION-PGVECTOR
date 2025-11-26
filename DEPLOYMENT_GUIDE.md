@@ -2,41 +2,51 @@
 
 ## Prerequisites
 - GitHub account (with Student Developer Pack)
-- Railway account (sign up with GitHub)
+- Neon account (PostgreSQL serverless - free tier)
+- Railway/Render account (for Laravel hosting)
 - Gemini API Key
 
 ---
 
-## 📦 Deploy to Railway (Recommended)
+## 📦 Deploy Backend (Neon + Railway/Render)
 
-### Step 1: Setup PostgreSQL with pgvector
+### Step 1: Setup PostgreSQL Database on Neon
+
+1. Go to [Neon Console](https://console.neon.tech)
+2. Sign up with GitHub (free tier: 0.5GB storage, always-on)
+3. Create New Project:
+   - Project name: `borneo-eatery`
+   - PostgreSQL version: 16
+   - Region: Choose closest to your users (e.g., AWS Singapore)
+
+4. **Enable pgvector Extension**:
+   - Click your project → **SQL Editor**
+   - Run this SQL:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   ```
+
+5. **Copy Connection String**:
+   - Go to **Dashboard** → **Connection Details**
+   - Copy the connection string (format: `postgresql://user:pass@host/db?sslmode=require`)
+   - Keep this safe - you'll use it in Railway/Render
+
+---
+
+### Step 2A: Deploy Laravel to Railway (Recommended)
+
+#### Deploy Application
 
 1. Go to [Railway](https://railway.app)
 2. Login with GitHub
-3. Create New Project → "Deploy PostgreSQL"
-4. Wait for PostgreSQL to be provisioned
-5. Click PostgreSQL service → **Variables** tab
-6. Copy connection details (will be auto-injected)
+3. Create New Project → "Empty Project"
+4. Click **New** → "GitHub Repo"
+5. Select `RAG-FUNCTION-PGVECTOR` repository
+6. Railway will auto-detect Laravel and deploy
 
-### Step 2: Enable pgvector Extension
+#### Configure Environment Variables
 
-1. In Railway PostgreSQL service, click **Data** tab
-2. Click **Query** button
-3. Run this SQL:
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-### Step 3: Deploy Laravel Backend
-
-1. In Railway project, click **New** → "GitHub Repo"
-2. Connect your GitHub account
-3. Select `RESTO` repository
-4. Railway will auto-detect Laravel and deploy
-
-### Step 4: Configure Environment Variables
-
-In Railway Laravel service → **Variables** tab, add:
+In Railway service → **Variables** tab, add:
 
 ```bash
 # App Config
@@ -46,15 +56,17 @@ APP_DEBUG=false
 APP_KEY=base64:YOUR_APP_KEY_HERE
 APP_URL=https://your-backend.up.railway.app
 
-# Database (auto-injected by Railway, but verify)
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-# Or manually set:
+# Neon PostgreSQL Database
+DATABASE_URL=postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
+
+# Or use individual variables:
 DB_CONNECTION=pgsql
-DB_HOST=${{Postgres.PGHOST}}
-DB_PORT=${{Postgres.PGPORT}}
-DB_DATABASE=${{Postgres.PGDATABASE}}
-DB_USERNAME=${{Postgres.PGUSER}}
-DB_PASSWORD=${{Postgres.PGPASSWORD}}
+DB_HOST=ep-xxx.region.aws.neon.tech
+DB_PORT=5432
+DB_DATABASE=dbname
+DB_USERNAME=username
+DB_PASSWORD=password
+DB_SSLMODE=require
 
 # Gemini API
 GEMINI_API_KEY=your_actual_gemini_api_key
@@ -70,48 +82,114 @@ CACHE_STORE=database
 QUEUE_CONNECTION=database
 ```
 
-### Step 5: Generate APP_KEY
+#### Generate APP_KEY
 
-Run locally to generate key:
+Run locally:
 ```bash
 php artisan key:generate --show
 ```
 
-Copy the output (starts with `base64:`) and paste to `APP_KEY` in Railway.
+Copy the output and paste to `APP_KEY` in Railway.
 
-### Step 6: Deploy & Run Migrations
+#### Deploy & Run Migrations
 
 1. Railway will auto-deploy after env vars are set
-2. Check **Deployments** tab for build logs
-3. Migrations will run automatically via `Procfile`
-4. If migration fails, run manually in Railway CLI:
-```bash
-railway run php artisan migrate --force
-```
+2. Migrations run automatically via `Procfile`
+3. Check logs: **Deployments** tab → click latest deployment
 
-### Step 7: Seed Database (First Time Only)
+#### Seed Database
 
-In Railway service → **Settings** → **Deploy**, run:
-```bash
-railway run php artisan db:seed --class=MenuSeeder
-```
-
-Or use Railway CLI:
+In Railway CLI or run command:
 ```bash
 railway run php artisan db:seed
 ```
 
-### Step 8: Test API
+---
 
-Get your Railway URL from **Settings** → **Domains**
+### Step 2B: Deploy Laravel to Render (Alternative)
+
+#### Create Web Service
+
+1. Go to [Render Dashboard](https://dashboard.render.com)
+2. Click **New** → **Web Service**
+3. Connect GitHub account → Select `RAG-FUNCTION-PGVECTOR` repo
+4. Configure:
+   - **Name**: `borneo-eatery-api`
+   - **Region**: Singapore (closest to users)
+   - **Branch**: `main`
+   - **Runtime**: Docker (or Native - PHP)
+   - **Build Command**: `composer install --optimize-autoloader --no-dev`
+   - **Start Command**: `php artisan migrate --force && php artisan config:cache && php -S 0.0.0.0:$PORT -t public`
+   - **Plan**: Free
+
+#### Environment Variables
+
+Add in Render → **Environment** tab:
+
+```bash
+APP_NAME=BorneoEatery
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=base64:YOUR_APP_KEY_HERE
+APP_URL=https://borneo-eatery-api.onrender.com
+
+# Neon PostgreSQL
+DATABASE_URL=postgresql://user:pass@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
+DB_CONNECTION=pgsql
+DB_SSLMODE=require
+
+# Gemini API
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_EMBEDDING_MODEL=text-embedding-004
+GEMINI_CHAT_MODEL=gemini-2.0-flash-exp
+
+# CORS
+FRONTEND_URL=https://your-frontend.vercel.app
+
+SESSION_DRIVER=database
+CACHE_STORE=database
+```
+
+#### Deploy
+
+1. Click **Create Web Service**
+2. Wait for build (5-10 minutes first time)
+3. Check logs for errors
+
+**Note**: Render free tier has cold start (app sleeps after 15 min inactivity)
+
+---
+
+### Step 3: Seed Database (First Time Only)
+
+After successful deployment, seed the menu data:
+
+**Railway**:
+```bash
+railway run php artisan db:seed
+```
+
+**Render**:
+Use Render Shell (Dashboard → Shell tab):
+```bash
+php artisan db:seed
+```
+
+---
+
+### Step 4: Test API
+
+Get your backend URL:
+- Railway: Check **Settings** → **Domains**
+- Render: `https://your-service.onrender.com`
 
 Test endpoints:
 ```bash
 # Health check
-curl https://your-backend.up.railway.app/api/menu
+curl https://your-backend-url/api/menu
 
 # Test AI chat
-curl -X POST https://your-backend.up.railway.app/api/ai/chat \
+curl -X POST https://your-backend-url/api/ai/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "recommend me a coffee",
@@ -124,57 +202,108 @@ curl -X POST https://your-backend.up.railway.app/api/ai/chat \
 
 ## 🔧 Troubleshooting
 
-### Issue: Migration Error - pgvector extension not found
-**Solution**: Make sure you ran `CREATE EXTENSION vector;` in PostgreSQL
+### Issue: pgvector extension not found
+**Solution**: Run `CREATE EXTENSION vector;` in Neon SQL Editor
+
+### Issue: Connection refused / SSL error
+**Solution**: Add `?sslmode=require` to DATABASE_URL or set `DB_SSLMODE=require`
 
 ### Issue: APP_KEY not set
-**Solution**: Generate key with `php artisan key:generate --show` and set in env vars
+**Solution**: Generate with `php artisan key:generate --show` and set in env vars
 
 ### Issue: CORS errors from frontend
-**Solution**: Update `FRONTEND_URL` in Railway env vars to match your Vercel URL
+**Solution**: Update `FRONTEND_URL` in env vars to match your Vercel URL
+
+### Issue: Migration Error
+**Solution**: 
+1. Check Neon database is active (not suspended)
+2. Verify DATABASE_URL is correct
+3. Check pgvector extension is enabled
 
 ### Issue: 500 Error
 **Solution**: 
-1. Check Railway logs: Service → **Deployments** → click latest deployment
+1. Check deployment logs
 2. Common causes:
-   - Missing env vars (especially `APP_KEY`, `GEMINI_API_KEY`)
+   - Missing env vars (APP_KEY, GEMINI_API_KEY)
    - Database connection failed
    - Migration not run
 
-### Issue: Cold Start / Slow Response
-**Solution**: Railway free tier may sleep after inactivity. Upgrade to Hobby plan ($5/mo) for always-on.
+### Issue: Render - Cold Start / Slow Response
+**Solution**: Free tier sleeps after 15 min inactivity. Keep alive with uptime monitor (like UptimeRobot) or upgrade to paid plan ($7/mo).
 
 ---
 
-## 📊 Monitoring
+## 📊 Monitoring & Maintenance
 
-- **Logs**: Railway → Service → **Observability** tab
-- **Metrics**: Check CPU/Memory usage in **Metrics** tab
-- **Database**: PostgreSQL service → **Data** tab to browse tables
+### Neon Database
 
----
+- **Dashboard**: https://console.neon.tech
+- **Metrics**: Monitor storage, compute time, connections
+- **SQL Editor**: Run queries directly
+- **Backups**: Automatic point-in-time recovery (24 hours on free tier)
 
-## 🔄 CI/CD
+### Railway
 
-Railway auto-deploys on every push to `main` branch:
-1. Push changes to GitHub
-2. Railway detects change
-3. Auto-build and deploy
-4. Migrations run automatically
+- **Logs**: Service → **Observability**
+- **Metrics**: CPU/Memory usage in **Metrics** tab
+- **CLI**: Install `npm i -g @railway/cli` for local commands
+
+### Render
+
+- **Logs**: Dashboard → **Logs** tab (live stream)
+- **Metrics**: Check deploy history and build times
+- **Shell**: Run artisan commands directly
 
 ---
 
 ## 💰 Cost Estimation
 
-**Railway Free Tier:**
-- $5/month credit (enough for hobby project)
-- PostgreSQL included
-- After free credit: ~$5-10/month for small app
+### Free Tier Limits:
 
-**Railway Hobby Plan ($5/month):**
-- Always-on (no cold starts)
-- Better performance
-- Priority support
+**Neon (PostgreSQL)**:
+- ✅ 0.5GB storage
+- ✅ 100 hours compute/month
+- ✅ Unlimited databases
+- ✅ Auto-suspend after inactivity (saves compute)
+- ✅ Always-on available on paid plan ($19/mo)
+
+**Railway**:
+- ✅ $5/month usage credit (enough for small app)
+- ✅ Pay only for what you use after credit
+- Cost: ~$5-10/month after free credit
+
+**Render**:
+- ✅ Completely free for web services
+- ❌ Cold start (spins down after 15 min inactivity)
+- Paid: $7/month for always-on
+
+### Recommended Setup:
+- **Neon Free Tier** (database) = $0
+- **Railway Hobby** (Laravel) = $5/month OR
+- **Render Free** (Laravel) = $0 (with cold starts)
+
+**Total**: $0-5/month for production app! 🎉
+
+---
+
+## 🆘 Quick Start Checklist
+
+### Neon Setup
+- [ ] Create Neon project
+- [ ] Enable pgvector: `CREATE EXTENSION vector;`
+- [ ] Copy DATABASE_URL
+
+### Railway/Render Setup
+- [ ] Connect GitHub repo
+- [ ] Set environment variables (APP_KEY, DATABASE_URL, GEMINI_API_KEY, FRONTEND_URL)
+- [ ] Deploy and check logs
+- [ ] Run migrations (automatic via Procfile)
+- [ ] Seed database: `php artisan db:seed`
+
+### Testing
+- [ ] Test API endpoint: `curl https://your-backend-url/api/menu`
+- [ ] Test AI chat endpoint
+- [ ] Verify CORS with frontend
 
 ---
 
@@ -184,26 +313,20 @@ Railway auto-deploys on every push to `main` branch:
 - ✅ Use strong `APP_KEY`
 - ✅ Keep `GEMINI_API_KEY` secret (never commit to git)
 - ✅ Set proper CORS origin (`FRONTEND_URL`)
-- ✅ Enable HTTPS (Railway provides this automatically)
-- ✅ Regular backups of PostgreSQL (Railway provides daily backups)
-
----
-
-## 📝 Post-Deployment
-
-1. Update frontend `API_BASE_URL` to Railway URL
-2. Test all features (AI chat, cart, checkout)
-3. Monitor logs for errors
-4. Setup alerts (optional, Railway Pro feature)
+- ✅ Enable HTTPS (automatic on Railway/Render)
+- ✅ Use `sslmode=require` for Neon connection
+- ✅ Neon automatic backups enabled
 
 ---
 
 ## 🆘 Need Help?
 
-- Railway Docs: https://docs.railway.app
-- Laravel Deployment: https://laravel.com/docs/deployment
-- Gemini API: https://ai.google.dev/docs
+- **Neon Docs**: https://neon.tech/docs
+- **Railway Docs**: https://docs.railway.app
+- **Render Docs**: https://render.com/docs
+- **Laravel Deployment**: https://laravel.com/docs/deployment
+- **Gemini API**: https://ai.google.dev/docs
 
 ---
 
-**Next Step**: Deploy Frontend to Vercel (see frontend README)
+**Next Step**: Deploy Frontend to Vercel 🚀
