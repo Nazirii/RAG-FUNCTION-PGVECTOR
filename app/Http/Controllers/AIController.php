@@ -424,6 +424,13 @@ class AIController extends Controller
             ];
         }
 
+        // Debug logging
+        Log::info('Remove multiple from cart', [
+            'session_id' => $sessionId,
+            'menu_ids' => $args['menu_ids'],
+            'cart_items' => \App\Models\Cart::where('session_id', $sessionId)->get(['id', 'menu_id', 'quantity'])
+        ]);
+
         $deleted = \App\Models\Cart::where('session_id', $sessionId)
             ->whereIn('menu_id', $args['menu_ids'])
             ->delete();
